@@ -3,7 +3,7 @@ from plotly.graph_objs import *
 from plotly import tools
 import matplotlib.pyplot as plt
 
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, _tree
 from sklearn.metrics import confusion_matrix, roc_curve, auc
 from sklearn.tree import plot_tree, export_text
 
@@ -110,3 +110,85 @@ class SuperDTC(DecisionTreeClassifier):
         )
 
         iplot(Figure(data = [dt_roc_curve, random_curve], layout=layout))
+
+    def clusters_descr(self, features):
+
+        feature_names = features
+
+        tree_ = self.tree_
+        total_data = np.sum(tree_.value[0])
+
+        feature_name = [
+            feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"
+            for i in tree_.feature
+        ]
+
+        global result
+        result = {}
+
+        def recurse(node, parents):
+            
+            name = feature_name[node]
+            pretty_name = name.replace('_', ' ').capitalize()
+
+            if name != 'undefined!':
+
+                left_name = parents + " | " + "not " + pretty_name
+                recurse(
+                    tree_.children_left[node], 
+                    left_name
+                )
+
+                right_name = parents + " | " + pretty_name
+                recurse(
+                    tree_.children_right[node], 
+                    right_name
+                )
+
+            else:
+                rate = tree_.value[node][0][1] / (tree_.value[node][0][0]+tree_.value[node][0][1])
+                result[node] = {
+                    'name':parents,
+                    'rate':round(100.*rate, 2),
+                    'share':round(100.*(tree_.value[node][0][0]+tree_.value[node][0][1])/total_data, 2)
+                }
+
+
+        recurse(0, "")
+        return(result)
+
+    def tree_to_code(self, features):
+
+        '''
+            Return tree structure as python code.
+        '''
+
+        feature_names = features
+
+        tree_ = self.tree_
+        feature_name = [
+            feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"
+            for i in tree_.feature
+            ]
+        print("def tree(row):")
+
+        def recurse(node, depth):
+            indent = "  " * depth
+
+            if tree_.feature[node] != _tree.TREE_UNDEFINED:
+                # -- parent node -- #
+                name = "row."+feature_name[node]
+                threshold = tree_.threshold[node]
+                print (" {}if {} <= {}:".format(indent, name, threshold))
+                recurse(tree_.children_left[node], depth + 1)
+                print (" {}else:  # if {} > {}".format(indent, name, threshold))
+                recurse(tree_.children_right[node], depth + 1)
+            else:
+                # -- leaf -- #
+                rate = tree_.value[node][0][1] / (tree_.value[node][0][0]+tree_.value[node][0][1])
+                #list_rates.append(rate)
+                volume = (tree_.value[node][0][0]+tree_.value[node][0][1]) 
+                #list_volume.append(volume)
+                print (" {}return ({}, {}, {})".format(indent, node, rate, volume)) 
+
+        recurse(0, 1)
